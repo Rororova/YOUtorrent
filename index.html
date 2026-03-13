@@ -1,0 +1,1464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nightline P2P Video Chat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap"
+    rel="stylesheet"
+  />
+  <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
+  <style>
+    :root {
+      --bg: #05080d;
+      --bg-elevated: rgba(12, 19, 28, 0.82);
+      --panel: rgba(10, 18, 28, 0.9);
+      --panel-strong: rgba(15, 25, 37, 0.96);
+      --border: rgba(122, 195, 255, 0.14);
+      --text: #e9f3ff;
+      --muted: #8b9db5;
+      --accent: #5dd6ff;
+      --accent-strong: #27b7ff;
+      --danger: #ff5c7a;
+      --success: #6ff4cf;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+      --radius-xl: 28px;
+      --radius-lg: 20px;
+      --radius-md: 14px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background:
+        radial-gradient(circle at top left, rgba(41, 112, 170, 0.24), transparent 34%),
+        radial-gradient(circle at top right, rgba(23, 160, 178, 0.18), transparent 28%),
+        radial-gradient(circle at bottom center, rgba(12, 51, 89, 0.36), transparent 38%),
+        linear-gradient(180deg, #04070b 0%, #071019 100%);
+      color: var(--text);
+      font-family: "DM Sans", sans-serif;
+      overflow-x: hidden;
+    }
+
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      inset: auto;
+      border-radius: 999px;
+      filter: blur(90px);
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.6;
+    }
+
+    body::before {
+      width: 320px;
+      height: 320px;
+      top: 8%;
+      left: -120px;
+      background: rgba(24, 137, 255, 0.2);
+    }
+
+    body::after {
+      width: 260px;
+      height: 260px;
+      bottom: 10%;
+      right: -90px;
+      background: rgba(54, 225, 214, 0.14);
+    }
+
+    .app {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      padding: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .shell {
+      width: min(1180px, 100%);
+      min-height: min(860px, calc(100vh - 48px));
+      padding: clamp(20px, 3vw, 34px);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      border: 1px solid var(--border);
+      border-radius: 32px;
+      background:
+        linear-gradient(180deg, rgba(8, 14, 22, 0.82), rgba(7, 12, 18, 0.94)),
+        rgba(5, 8, 13, 0.88);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(24px);
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-mark {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      background:
+        linear-gradient(145deg, rgba(44, 182, 255, 0.95), rgba(45, 102, 255, 0.42)),
+        #122538;
+      box-shadow: 0 0 36px rgba(61, 190, 255, 0.28);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .brand-mark::after {
+      content: "";
+      position: absolute;
+      inset: 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.36);
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: clamp(1.1rem, 2vw, 1.4rem);
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .brand p {
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border-radius: 999px;
+      background: rgba(11, 20, 32, 0.88);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 0.95rem;
+      white-space: nowrap;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--muted);
+      box-shadow: 0 0 0 0 rgba(93, 214, 255, 0.35);
+      transition: background 0.25s ease, box-shadow 0.25s ease;
+    }
+
+    .status-pill[data-status="waiting"] .status-dot,
+    .status-pill[data-status="connecting"] .status-dot {
+      background: #ffd76b;
+      box-shadow: 0 0 0 10px rgba(255, 215, 107, 0.08);
+    }
+
+    .status-pill[data-status="connected"] .status-dot {
+      background: var(--success);
+      box-shadow: 0 0 0 10px rgba(111, 244, 207, 0.08);
+    }
+
+    .status-pill[data-status="disconnected"] .status-dot,
+    .status-pill[data-status="error"] .status-dot {
+      background: var(--danger);
+      box-shadow: 0 0 0 10px rgba(255, 92, 122, 0.08);
+    }
+
+    .content {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 380px minmax(0, 1fr);
+      gap: 22px;
+      min-height: 0;
+    }
+
+    .card {
+      border-radius: var(--radius-xl);
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(14, 22, 34, 0.84), rgba(9, 15, 24, 0.92));
+      overflow: hidden;
+    }
+
+    .sidebar {
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }
+
+    .eyebrow {
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      font-size: 0.72rem;
+      font-weight: 700;
+    }
+
+    .headline {
+      margin: 8px 0 0;
+      font-size: clamp(2rem, 4vw, 3rem);
+      line-height: 0.98;
+    }
+
+    .subcopy {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 0.98rem;
+    }
+
+    .room-code-panel,
+    .join-panel,
+    .state-panel,
+    .settings-panel {
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(108, 181, 255, 0.12);
+      background: rgba(8, 14, 22, 0.62);
+      padding: 18px;
+    }
+
+    .room-code-panel.hidden,
+    .state-panel.hidden,
+    .control-bar.hidden,
+    .lobby-actions.hidden {
+      display: none;
+    }
+
+    .room-code-label {
+      color: var(--muted);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+    }
+
+    .room-code {
+      margin: 10px 0 14px;
+      font-family: "Space Mono", monospace;
+      font-size: clamp(1.8rem, 5vw, 2.8rem);
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      word-break: break-all;
+    }
+
+    .copy-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .helper-text {
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+
+    .settings-panel summary {
+      cursor: pointer;
+      list-style: none;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .settings-panel summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .settings-panel summary::after {
+      content: "+";
+      float: right;
+      color: var(--accent);
+      font-size: 1.1rem;
+      line-height: 1;
+    }
+
+    .settings-panel[open] summary::after {
+      content: "-";
+    }
+
+    .settings-copy {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+
+    .settings-grid {
+      display: grid;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .field {
+      display: grid;
+      gap: 8px;
+    }
+
+    .field label {
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
+    .field input {
+      width: 100%;
+      border: 1px solid rgba(109, 184, 255, 0.18);
+      background: rgba(2, 7, 14, 0.92);
+      color: var(--text);
+      border-radius: 14px;
+      padding: 13px 14px;
+      font: inherit;
+      outline: none;
+    }
+
+    .field input:focus {
+      border-color: rgba(93, 214, 255, 0.6);
+      box-shadow: 0 0 0 4px rgba(93, 214, 255, 0.12);
+    }
+
+    .settings-note {
+      margin: 14px 0 0;
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.5;
+    }
+
+    .settings-note strong {
+      color: var(--text);
+    }
+
+    .lobby-actions {
+      display: grid;
+      gap: 12px;
+    }
+
+    .join-panel label {
+      display: block;
+      margin-bottom: 10px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .join-panel input {
+      width: 100%;
+      border: 1px solid rgba(109, 184, 255, 0.18);
+      background: rgba(2, 7, 14, 0.92);
+      color: var(--text);
+      border-radius: 16px;
+      padding: 16px 18px;
+      font-family: "Space Mono", monospace;
+      font-size: 1rem;
+      text-transform: uppercase;
+      outline: none;
+    }
+
+    .join-panel input:focus {
+      border-color: rgba(93, 214, 255, 0.6);
+      box-shadow: 0 0 0 4px rgba(93, 214, 255, 0.12);
+    }
+
+    .actions-row {
+      display: flex;
+      gap: 12px;
+      margin-top: 14px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: none;
+      cursor: pointer;
+      font: inherit;
+      transition: transform 0.18s ease, opacity 0.18s ease, background 0.2s ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .primary-btn,
+    .secondary-btn,
+    .icon-btn {
+      border-radius: 16px;
+      padding: 15px 18px;
+    }
+
+    .primary-btn {
+      background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+      color: #041018;
+      font-weight: 700;
+    }
+
+    .secondary-btn {
+      background: rgba(14, 26, 39, 0.96);
+      color: var(--text);
+      border: 1px solid rgba(109, 184, 255, 0.12);
+    }
+
+    .stage {
+      padding: 20px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .stage-inner {
+      position: relative;
+      flex: 1;
+      border-radius: var(--radius-xl);
+      border: 1px solid rgba(115, 188, 255, 0.14);
+      background:
+        radial-gradient(circle at top, rgba(48, 111, 180, 0.2), transparent 38%),
+        linear-gradient(180deg, rgba(4, 8, 14, 0.96), rgba(7, 12, 20, 0.98));
+      overflow: hidden;
+      min-height: 520px;
+    }
+
+    .state-layer {
+      position: absolute;
+      inset: 0;
+      padding: 28px;
+      display: grid;
+      place-items: center;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.32s ease, transform 0.32s ease, visibility 0.32s;
+      transform: scale(0.98);
+    }
+
+    .state-layer.active {
+      opacity: 1;
+      visibility: visible;
+      transform: scale(1);
+    }
+
+    .state-box {
+      text-align: center;
+      max-width: 420px;
+      padding: 28px;
+      border-radius: 26px;
+      border: 1px solid rgba(109, 184, 255, 0.12);
+      background: rgba(8, 14, 22, 0.72);
+      backdrop-filter: blur(16px);
+    }
+
+    .state-box h2 {
+      margin: 12px 0 10px;
+      font-size: clamp(1.6rem, 3vw, 2.2rem);
+    }
+
+    .state-box p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .spinner,
+    .pulse-ring {
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .spinner {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      border: 3px solid rgba(93, 214, 255, 0.18);
+      border-top-color: var(--accent);
+      animation: spin 1s linear infinite;
+    }
+
+    .pulse-ring {
+      width: 92px;
+      height: 92px;
+      border-radius: 50%;
+      border: 2px solid rgba(93, 214, 255, 0.32);
+    }
+
+    .pulse-ring::before,
+    .pulse-ring::after {
+      content: "";
+      position: absolute;
+      inset: -2px;
+      border-radius: inherit;
+      border: inherit;
+      animation: pulse 2.2s ease-out infinite;
+    }
+
+    .pulse-ring::after {
+      animation-delay: 0.8s;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.9); opacity: 0.7; }
+      100% { transform: scale(1.4); opacity: 0; }
+    }
+
+    .video-grid {
+      position: absolute;
+      inset: 0;
+      padding: 18px;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    .video-grid.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .remote-wrap,
+    .local-wrap {
+      position: relative;
+      border-radius: 24px;
+      overflow: hidden;
+      border: 1px solid rgba(118, 190, 255, 0.12);
+      background: #050a10;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+    }
+
+    .remote-wrap video,
+    .local-wrap video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      background: linear-gradient(180deg, #08111b, #03070c);
+    }
+
+    .remote-wrap {
+      min-height: 100%;
+    }
+
+    .local-wrap {
+      position: absolute;
+      width: min(31%, 240px);
+      aspect-ratio: 16 / 10;
+      right: 26px;
+      bottom: 26px;
+      backdrop-filter: blur(10px);
+    }
+
+    .video-label {
+      position: absolute;
+      left: 14px;
+      bottom: 14px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      background: rgba(4, 10, 18, 0.72);
+      border: 1px solid rgba(129, 198, 255, 0.14);
+      color: var(--text);
+      font-size: 0.82rem;
+    }
+
+    .control-bar {
+      position: absolute;
+      left: 50%;
+      bottom: 22px;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      border-radius: 999px;
+      background: rgba(7, 13, 21, 0.88);
+      border: 1px solid rgba(112, 187, 255, 0.14);
+      backdrop-filter: blur(16px);
+      z-index: 3;
+    }
+
+    .icon-btn {
+      width: 54px;
+      height: 54px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text);
+      border: 1px solid rgba(112, 187, 255, 0.12);
+    }
+
+    .icon-btn svg {
+      width: 22px;
+      height: 22px;
+      fill: currentColor;
+    }
+
+    .icon-btn.off {
+      background: rgba(255, 92, 122, 0.12);
+      color: #ffd6df;
+      border-color: rgba(255, 92, 122, 0.3);
+    }
+
+    .icon-btn.end {
+      background: linear-gradient(135deg, #ff6482, #ff3d62);
+      color: white;
+      border: none;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 26px;
+      transform: translate(-50%, 20px);
+      padding: 12px 16px;
+      border-radius: 999px;
+      background: rgba(8, 15, 24, 0.95);
+      border: 1px solid rgba(109, 184, 255, 0.15);
+      color: var(--text);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease, transform 0.25s ease;
+      z-index: 10;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+
+    .error-text {
+      color: #ffb9c7;
+      font-size: 0.92rem;
+      min-height: 1.3em;
+    }
+
+    @media (max-width: 980px) {
+      .content { grid-template-columns: 1fr; }
+      .stage-inner { min-height: 480px; }
+    }
+
+    @media (max-width: 720px) {
+      .app { padding: 14px; }
+      .shell { min-height: calc(100vh - 28px); border-radius: 26px; padding: 16px; }
+      .sidebar, .stage { padding: 16px; }
+      .state-layer { padding: 18px; }
+      .state-box { padding: 22px 18px; }
+      .stage-inner { min-height: 420px; }
+      .local-wrap { width: 42%; right: 16px; bottom: 90px; }
+      .control-bar { width: calc(100% - 24px); justify-content: center; bottom: 14px; }
+    }
+
+    @media (max-width: 520px) {
+      .topbar { align-items: flex-start; }
+      .status-pill { width: 100%; justify-content: center; }
+      .local-wrap { width: 46%; }
+      .room-code { font-size: 1.45rem; letter-spacing: 0.16em; }
+      .actions-row { flex-direction: column; }
+      .actions-row button, .copy-row button { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"></div>
+          <div>
+            <h1>Nightline</h1>
+            <p>Peer-to-peer video rooms with zero backend setup</p>
+          </div>
+        </div>
+        <div class="status-pill" id="statusPill" data-status="idle">
+          <span class="status-dot"></span>
+          <span id="statusText">Lobby</span>
+        </div>
+      </header>
+
+      <section class="content">
+        <aside class="card sidebar">
+          <div>
+            <div class="eyebrow">WebRTC / PeerJS</div>
+            <h2 class="headline">Create a room or join with a code.</h2>
+          </div>
+          <p class="subcopy" id="descriptionText">
+            Start a private two-person video call directly in the browser. A room code is generated for hosts and copied automatically.
+          </p>
+          <div class="lobby-actions" id="lobbyActions">
+            <button class="primary-btn" id="createBtn">Create Room</button>
+            <div class="join-panel">
+              <label for="roomCodeInput">Join an existing room</label>
+              <input id="roomCodeInput" maxlength="32" placeholder="ENTER CODE" autocomplete="off" />
+              <div class="actions-row">
+                <button class="secondary-btn" id="joinBtn">Join Room</button>
+              </div>
+            </div>
+          </div>
+
+          <details class="settings-panel" id="networkPanel">
+            <summary>Network / Relay Settings</summary>
+            <p class="settings-copy">
+              If calls get stuck on connecting, add TURN credentials here. Settings are stored only in this browser.
+            </p>
+            <div class="settings-grid">
+              <div class="field">
+                <label for="stunInput">STUN server URLs</label>
+                <input id="stunInput" placeholder="stun:stun.l.google.com:19302, stun:stun1.l.google.com:19302" />
+              </div>
+              <div class="field">
+                <label for="turnUrlInput">TURN server URL</label>
+                <input id="turnUrlInput" placeholder="turn:your-turn-host:3478?transport=udp" />
+              </div>
+              <div class="field">
+                <label for="turnUsernameInput">TURN username</label>
+                <input id="turnUsernameInput" placeholder="optional username" autocomplete="off" />
+              </div>
+              <div class="field">
+                <label for="turnCredentialInput">TURN credential</label>
+                <input id="turnCredentialInput" type="password" placeholder="optional credential" autocomplete="off" />
+              </div>
+            </div>
+            <div class="actions-row">
+              <button class="secondary-btn" id="saveNetworkBtn" type="button">Save Network Settings</button>
+              <button class="secondary-btn" id="clearTurnBtn" type="button">Clear TURN</button>
+            </div>
+            <p class="settings-note" id="networkHint">
+              <strong>Current mode:</strong> Default STUN only. This can fail on strict networks.
+            </p>
+          </details>
+
+          <div class="room-code-panel hidden" id="roomCodePanel">
+            <div class="room-code-label">Room code</div>
+            <div class="room-code" id="roomCodeDisplay">------</div>
+            <div class="copy-row">
+              <button class="secondary-btn" id="copyBtn">Copy Code</button>
+              <span class="helper-text">Share this code with your peer.</span>
+            </div>
+          </div>
+
+          <div class="state-panel hidden" id="sidebarStatePanel">
+            <div class="room-code-label" id="sidebarStateLabel">Session</div>
+            <p class="subcopy" id="sidebarStateCopy"></p>
+          </div>
+
+          <p class="error-text" id="errorText" aria-live="polite"></p>
+        </aside>
+
+        <section class="card stage">
+          <div class="stage-inner">
+            <div class="video-grid" id="videoGrid">
+              <div class="remote-wrap">
+                <video id="remoteVideo" autoplay playsinline></video>
+                <div class="video-label">Remote</div>
+              </div>
+              <div class="local-wrap">
+                <video id="localVideo" autoplay muted playsinline></video>
+                <div class="video-label">You</div>
+              </div>
+            </div>
+
+            <div class="state-layer active" id="stateLobby">
+              <div class="state-box">
+                <div class="pulse-ring"></div>
+                <h2>Ready when you are</h2>
+                <p>Create a room to generate a code or join someone else’s room to begin the WebRTC handshake.</p>
+              </div>
+            </div>
+
+            <div class="state-layer" id="stateWaiting">
+              <div class="state-box">
+                <div class="spinner"></div>
+                <h2>Waiting for peer...</h2>
+                <p>Your camera and microphone are ready. Share the code and keep this window open until the other person joins.</p>
+              </div>
+            </div>
+
+            <div class="state-layer" id="stateConnecting">
+              <div class="state-box">
+                <div class="pulse-ring"></div>
+                <h2>Connecting...</h2>
+                <p>Exchanging session details and opening a peer-to-peer media path.</p>
+              </div>
+            </div>
+
+            <div class="state-layer" id="stateEnded">
+              <div class="state-box">
+                <div class="pulse-ring"></div>
+                <h2 id="endedTitle">Call ended</h2>
+                <p id="endedMessage">The session has closed. Return to the lobby to create or join another room.</p>
+                <div class="actions-row" style="justify-content:center; margin-top: 18px;">
+                  <button class="primary-btn" id="returnLobbyBtn">Return to Lobby</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="control-bar hidden" id="controlBar">
+            <button class="icon-btn" id="muteBtn" title="Mute microphone" aria-label="Mute microphone">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a1 1 0 1 1 2 0 7 7 0 0 1-6 6.92V21h3a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h3v-2.08A7 7 0 0 1 5 12a1 1 0 1 1 2 0 5 5 0 1 0 10 0Z"/></svg>
+            </button>
+            <button class="icon-btn" id="cameraBtn" title="Turn camera off" aria-label="Turn camera off">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 8a1 1 0 0 1 1-1h1.59l2.7-2.29A1 1 0 0 1 22 5.47v13.06a1 1 0 0 1-1.71.76L17.6 17H16a1 1 0 0 1-1-1V8Zm-9 1a3 3 0 0 1 3-3h3a1 1 0 1 1 0 2H9a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h3a1 1 0 1 1 0 2H9a3 3 0 0 1-3-3V9Z"/></svg>
+            </button>
+            <button class="icon-btn end" id="endBtn" title="End call" aria-label="End call">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 13a17.77 17.77 0 0 0-7.61 1.69A2.48 2.48 0 0 0 3 16.92V20a1 1 0 0 0 1 1h4.21a1 1 0 0 0 .93-.64l.71-1.83a13.41 13.41 0 0 1 4.3 0l.71 1.83a1 1 0 0 0 .93.64H20a1 1 0 0 0 1-1v-3.08a2.48 2.48 0 0 0-1.39-2.23A17.77 17.77 0 0 0 12 13Z"/></svg>
+            </button>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast">Copied!</div>
+
+  <script>
+    const state = {
+      ui: "lobby",
+      peer: null,
+      localStream: null,
+      remoteStream: null,
+      currentCall: null,
+      connectionWatchdogId: null,
+      endingSession: false,
+      isHost: false,
+      micEnabled: true,
+      cameraEnabled: true,
+      roomCode: "",
+      explicitlyEnded: false
+    };
+
+    const els = {
+      statusPill: document.getElementById("statusPill"),
+      statusText: document.getElementById("statusText"),
+      descriptionText: document.getElementById("descriptionText"),
+      lobbyActions: document.getElementById("lobbyActions"),
+      networkPanel: document.getElementById("networkPanel"),
+      roomCodePanel: document.getElementById("roomCodePanel"),
+      roomCodeDisplay: document.getElementById("roomCodeDisplay"),
+      sidebarStatePanel: document.getElementById("sidebarStatePanel"),
+      sidebarStateLabel: document.getElementById("sidebarStateLabel"),
+      sidebarStateCopy: document.getElementById("sidebarStateCopy"),
+      networkHint: document.getElementById("networkHint"),
+      errorText: document.getElementById("errorText"),
+      roomCodeInput: document.getElementById("roomCodeInput"),
+      stunInput: document.getElementById("stunInput"),
+      turnUrlInput: document.getElementById("turnUrlInput"),
+      turnUsernameInput: document.getElementById("turnUsernameInput"),
+      turnCredentialInput: document.getElementById("turnCredentialInput"),
+      createBtn: document.getElementById("createBtn"),
+      joinBtn: document.getElementById("joinBtn"),
+      copyBtn: document.getElementById("copyBtn"),
+      saveNetworkBtn: document.getElementById("saveNetworkBtn"),
+      clearTurnBtn: document.getElementById("clearTurnBtn"),
+      returnLobbyBtn: document.getElementById("returnLobbyBtn"),
+      muteBtn: document.getElementById("muteBtn"),
+      cameraBtn: document.getElementById("cameraBtn"),
+      endBtn: document.getElementById("endBtn"),
+      controlBar: document.getElementById("controlBar"),
+      videoGrid: document.getElementById("videoGrid"),
+      localVideo: document.getElementById("localVideo"),
+      remoteVideo: document.getElementById("remoteVideo"),
+      toast: document.getElementById("toast"),
+      endedTitle: document.getElementById("endedTitle"),
+      endedMessage: document.getElementById("endedMessage"),
+      states: {
+        lobby: document.getElementById("stateLobby"),
+        waiting: document.getElementById("stateWaiting"),
+        connecting: document.getElementById("stateConnecting"),
+        ended: document.getElementById("stateEnded")
+      }
+    };
+
+    const DEFAULT_STUN = [
+      "stun:stun.l.google.com:19302",
+      "stun:stun1.l.google.com:19302",
+      "stun:stun2.l.google.com:19302"
+    ];
+
+    const STORAGE_KEYS = {
+      stun: "nightline.stun",
+      turnUrl: "nightline.turnUrl",
+      turnUsername: "nightline.turnUsername",
+      turnCredential: "nightline.turnCredential"
+    };
+
+    function setError(message = "") {
+      els.errorText.textContent = message;
+      if (message) {
+        els.statusPill.dataset.status = "error";
+      }
+    }
+
+    function showToast(message) {
+      els.toast.textContent = message;
+      els.toast.classList.add("show");
+      clearTimeout(showToast.timeoutId);
+      showToast.timeoutId = window.setTimeout(() => {
+        els.toast.classList.remove("show");
+      }, 1800);
+    }
+
+    function normalizeRoomCode(value) {
+      return value.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "");
+    }
+
+    function isLocalhost() {
+      return location.hostname === "localhost" || location.hostname === "127.0.0.1";
+    }
+
+    function canUseMediaDevices() {
+      return window.isSecureContext || isLocalhost();
+    }
+
+    function parseServerList(value) {
+      return value
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+    }
+
+    function hasTurnConfigured() {
+      return Boolean(els.turnUrlInput.value.trim());
+    }
+
+    function getConfiguredIceServers() {
+      const stunUrls = parseServerList(els.stunInput.value || DEFAULT_STUN.join(", "));
+      const iceServers = stunUrls.map((url) => ({ urls: url }));
+      const turnUrl = els.turnUrlInput.value.trim();
+      const turnUsername = els.turnUsernameInput.value.trim();
+      const turnCredential = els.turnCredentialInput.value.trim();
+
+      if (turnUrl) {
+        iceServers.push({
+          urls: turnUrl,
+          username: turnUsername,
+          credential: turnCredential
+        });
+      }
+
+      return iceServers;
+    }
+
+    function updateNetworkHint() {
+      if (hasTurnConfigured()) {
+        els.descriptionText.textContent = "TURN relay is configured. Cross-network calls should be much more reliable as long as the credentials are valid.";
+        els.networkHint.innerHTML = "<strong>Current mode:</strong> STUN + TURN configured. This is the setup you want for different Wi-Fi networks.";
+        return;
+      }
+
+      els.descriptionText.textContent = "Hosted on Vercel is enough for HTTPS permissions, but without TURN this app is still best-effort only across different networks.";
+      els.networkHint.innerHTML = "<strong>Current mode:</strong> STUN only. Same Wi-Fi may work, but different Wi-Fi networks can stall even when the site is hosted correctly.";
+    }
+
+    function loadNetworkSettings() {
+      try {
+        els.stunInput.value = localStorage.getItem(STORAGE_KEYS.stun) || DEFAULT_STUN.join(", ");
+        els.turnUrlInput.value = localStorage.getItem(STORAGE_KEYS.turnUrl) || "";
+        els.turnUsernameInput.value = localStorage.getItem(STORAGE_KEYS.turnUsername) || "";
+        els.turnCredentialInput.value = localStorage.getItem(STORAGE_KEYS.turnCredential) || "";
+      } catch (_) {
+        els.stunInput.value = DEFAULT_STUN.join(", ");
+        els.turnUrlInput.value = "";
+        els.turnUsernameInput.value = "";
+        els.turnCredentialInput.value = "";
+      }
+      updateNetworkHint();
+    }
+
+    function saveNetworkSettings() {
+      try {
+        localStorage.setItem(STORAGE_KEYS.stun, els.stunInput.value.trim() || DEFAULT_STUN.join(", "));
+        localStorage.setItem(STORAGE_KEYS.turnUrl, els.turnUrlInput.value.trim());
+        localStorage.setItem(STORAGE_KEYS.turnUsername, els.turnUsernameInput.value.trim());
+        localStorage.setItem(STORAGE_KEYS.turnCredential, els.turnCredentialInput.value.trim());
+      } catch (_) {
+      }
+      updateNetworkHint();
+      showToast("Network settings saved");
+    }
+
+    function clearTurnSettings() {
+      els.turnUrlInput.value = "";
+      els.turnUsernameInput.value = "";
+      els.turnCredentialInput.value = "";
+      try {
+        localStorage.removeItem(STORAGE_KEYS.turnUrl);
+        localStorage.removeItem(STORAGE_KEYS.turnUsername);
+        localStorage.removeItem(STORAGE_KEYS.turnCredential);
+      } catch (_) {
+      }
+      updateNetworkHint();
+      showToast("TURN settings cleared");
+    }
+
+    async function attachStream(videoElement, stream) {
+      videoElement.srcObject = stream;
+      try {
+        await videoElement.play();
+      } catch (_) {
+      }
+    }
+
+    function randomCode(length = 6) {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      const values = new Uint32Array(length);
+      crypto.getRandomValues(values);
+      let output = "";
+      for (let i = 0; i < length; i += 1) {
+        output += chars[values[i] % chars.length];
+      }
+      return output;
+    }
+
+    async function copyToClipboard(value, successMessage = "Copied!") {
+      try {
+        await navigator.clipboard.writeText(value);
+        showToast(successMessage);
+      } catch (_) {
+        const input = document.createElement("input");
+        input.value = value;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand("copy");
+        input.remove();
+        showToast(successMessage);
+      }
+    }
+
+    function updateStatus(label, kind) {
+      els.statusText.textContent = label;
+      els.statusPill.dataset.status = kind;
+    }
+
+    function setSidebarState(label, copy) {
+      els.sidebarStateLabel.textContent = label;
+      els.sidebarStateCopy.textContent = copy;
+      els.sidebarStatePanel.classList.remove("hidden");
+    }
+
+    function clearSidebarState() {
+      els.sidebarStatePanel.classList.add("hidden");
+    }
+
+    function clearConnectionWatchdog() {
+      if (state.connectionWatchdogId) {
+        window.clearTimeout(state.connectionWatchdogId);
+        state.connectionWatchdogId = null;
+      }
+    }
+
+    function startConnectionWatchdog() {
+      clearConnectionWatchdog();
+      state.connectionWatchdogId = window.setTimeout(() => {
+        if (!state.remoteStream && state.currentCall) {
+          if (els.networkPanel) {
+            els.networkPanel.open = true;
+          }
+
+          if (hasTurnConfigured()) {
+            setSidebarState("Relay check needed", "The peers found each other, but media is still not flowing. Check the TURN URL, username, credential, and whether the relay allows WebRTC traffic.");
+            setError("Media did not start even with TURN configured. Recheck the TURN credentials on both devices.");
+            return;
+          }
+
+          setSidebarState("STUN-only limit hit", "The peers found each other, but audio/video is not flowing. Your site is hosted correctly, but different Wi-Fi networks often need a TURN relay.");
+          setError("Signaling worked, but STUN-only media could not traverse the network. Vercel hosts the app, but it does not relay media.");
+        }
+      }, 15000);
+    }
+
+    function switchUi(nextState) {
+      state.ui = nextState;
+      Object.entries(els.states).forEach(([key, node]) => {
+        node.classList.toggle("active", key === nextState);
+      });
+
+      const showPreview = Boolean(state.localStream) && (nextState === "waiting" || nextState === "connecting");
+      const inCall = nextState === "connected";
+      els.videoGrid.classList.toggle("active", inCall || showPreview);
+      els.controlBar.classList.toggle("hidden", !inCall);
+      els.lobbyActions.classList.toggle("hidden", nextState !== "lobby");
+      els.roomCodePanel.classList.toggle("hidden", !(state.roomCode && (nextState === "waiting" || nextState === "connecting")));
+    }
+
+    function stopStream(stream) {
+      if (!stream) {
+        return;
+      }
+      stream.getTracks().forEach((track) => track.stop());
+    }
+
+    function destroyPeer() {
+      if (state.peer && !state.peer.destroyed) {
+        state.peer.destroy();
+      }
+      state.peer = null;
+    }
+
+    function closeCurrentCall() {
+      clearConnectionWatchdog();
+      const call = state.currentCall;
+      state.currentCall = null;
+      if (call) {
+        try {
+          call.close();
+        } catch (_) {
+        }
+      }
+      state.remoteStream = null;
+      els.remoteVideo.srcObject = null;
+    }
+
+    function cleanupMedia() {
+      closeCurrentCall();
+      stopStream(state.localStream);
+      state.localStream = null;
+      state.remoteStream = null;
+      els.localVideo.srcObject = null;
+      els.remoteVideo.srcObject = null;
+      state.micEnabled = true;
+      state.cameraEnabled = true;
+      syncControlButtons();
+    }
+
+    function teardownAll() {
+      cleanupMedia();
+      destroyPeer();
+      state.isHost = false;
+      state.roomCode = "";
+    }
+
+    function syncControlButtons() {
+      els.muteBtn.classList.toggle("off", !state.micEnabled);
+      els.cameraBtn.classList.toggle("off", !state.cameraEnabled);
+      els.muteBtn.title = state.micEnabled ? "Mute microphone" : "Unmute microphone";
+      els.cameraBtn.title = state.cameraEnabled ? "Turn camera off" : "Turn camera on";
+    }
+
+    async function ensureLocalStream() {
+      if (state.localStream) {
+        return state.localStream;
+      }
+
+      if (!canUseMediaDevices()) {
+        throw new Error("Open this app from HTTPS or localhost. Camera and microphone access is unreliable on file:// or plain HTTP.");
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        state.localStream = stream;
+        await attachStream(els.localVideo, stream);
+        return stream;
+      } catch (error) {
+        const denied = error && (error.name === "NotAllowedError" || error.name === "PermissionDeniedError");
+        throw new Error(denied ? "Camera or microphone permission was denied." : "Unable to access camera or microphone.");
+      }
+    }
+
+    function bindCall(call) {
+      if (state.currentCall && state.currentCall !== call) {
+        closeCurrentCall();
+      }
+
+      state.currentCall = call;
+      updateStatus("Connecting", "connecting");
+      switchUi("connecting");
+      setSidebarState(
+        hasTurnConfigured() ? "Handshake" : "STUN-only handshake",
+        hasTurnConfigured()
+          ? "Opening the peer-to-peer connection and preparing remote media through your configured ICE servers."
+          : "Opening the peer-to-peer connection with STUN only. Different Wi-Fi networks may fail to establish direct media."
+      );
+      setError("");
+      startConnectionWatchdog();
+
+      call.on("stream", async (remoteStream) => {
+        clearConnectionWatchdog();
+        state.remoteStream = remoteStream;
+        await attachStream(els.remoteVideo, remoteStream);
+        updateStatus("Connected", "connected");
+        switchUi("connected");
+        setSidebarState("In call", "Live audio and video are flowing directly between both peers.");
+      });
+
+      call.on("close", () => {
+        if (state.endingSession) {
+          return;
+        }
+        const message = state.explicitlyEnded ? "You ended the call." : "The call has ended.";
+        endSession(message, false);
+      });
+
+      call.on("error", () => {
+        endSession("Connection lost. Please try again.", true);
+      });
+    }
+
+    function initializePeer(peerId) {
+      return new Promise((resolve, reject) => {
+        const options = {
+          debug: 2,
+          config: {
+            iceServers: getConfiguredIceServers(),
+            sdpSemantics: "unified-plan"
+          }
+        };
+        const peer = peerId ? new Peer(peerId, options) : new Peer(options);
+        let settled = false;
+
+        peer.on("open", (id) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          state.peer = peer;
+          resolve(id);
+        });
+
+        peer.on("error", (error) => {
+          if (!settled) {
+            settled = true;
+            try {
+              peer.destroy();
+            } catch (_) {
+            }
+            const conflict = error.type === "unavailable-id";
+            reject(new Error(conflict ? "Generated room code collided. Please create the room again." : "Peer connection setup failed."));
+            return;
+          }
+
+          if (error.type === "peer-unavailable") {
+            endSession("That room code is not available.", true);
+          } else {
+            setError(error.message || "Peer connection error.");
+            updateStatus("Error", "error");
+          }
+        });
+
+        peer.on("disconnected", () => {
+          updateStatus("Disconnected", "disconnected");
+          if (state.ui === "connected" || state.ui === "connecting" || state.ui === "waiting") {
+            endSession("Peer server connection dropped.", true);
+          }
+        });
+      });
+    }
+
+    async function createRoom() {
+      resetEndedMessage();
+      state.explicitlyEnded = false;
+      setError("");
+      els.createBtn.disabled = true;
+      els.joinBtn.disabled = true;
+
+      try {
+        await ensureLocalStream();
+        if (!hasTurnConfigured()) {
+          showToast("STUN-only mode: different Wi-Fi may fail");
+        }
+        const code = randomCode(6);
+        await initializePeer(code);
+        state.isHost = true;
+        state.roomCode = code;
+        els.roomCodeDisplay.textContent = code;
+
+        state.peer.on("call", (call) => {
+          if (!state.localStream) {
+            endSession("Local media is no longer available.", true);
+            return;
+          }
+          bindCall(call);
+          call.answer(state.localStream);
+        });
+
+        await copyToClipboard(code, "Room code copied");
+
+        updateStatus("Waiting", "waiting");
+        switchUi("waiting");
+        setSidebarState(
+          hasTurnConfigured() ? "Waiting for peer" : "Waiting in STUN-only mode",
+          hasTurnConfigured()
+            ? "Your room is live. Share the code and stay on this screen until the other person connects."
+            : "Your room is live, but without TURN the media path is best-effort only across different Wi-Fi networks."
+        );
+      } catch (error) {
+        teardownAll();
+        switchUi("lobby");
+        updateStatus("Error", "error");
+        setError(error.message);
+      } finally {
+        els.createBtn.disabled = false;
+        els.joinBtn.disabled = false;
+      }
+    }
+
+    async function joinRoom() {
+      resetEndedMessage();
+      state.explicitlyEnded = false;
+      setError("");
+      els.createBtn.disabled = true;
+      els.joinBtn.disabled = true;
+
+      const code = normalizeRoomCode(els.roomCodeInput.value);
+      if (!/^[A-Z0-9_-]{6,32}$/.test(code)) {
+        setError("Enter a valid room code.");
+        els.createBtn.disabled = false;
+        els.joinBtn.disabled = false;
+        return;
+      }
+
+      try {
+        const stream = await ensureLocalStream();
+        if (!hasTurnConfigured()) {
+          showToast("STUN-only mode: different Wi-Fi may fail");
+        }
+        await initializePeer();
+        state.isHost = false;
+        state.roomCode = code;
+        els.roomCodeDisplay.textContent = code;
+        updateStatus("Connecting", "connecting");
+        switchUi("connecting");
+        setSidebarState(
+          hasTurnConfigured() ? "Joining room" : "Joining in STUN-only mode",
+          hasTurnConfigured()
+            ? "Calling the host and waiting for them to answer."
+            : "Calling the host with STUN only. If the other person is on a different Wi-Fi network, media may stall even when signaling succeeds."
+        );
+        const call = state.peer.call(code, stream);
+        if (!call) {
+          throw new Error("Failed to start the call.");
+        }
+        bindCall(call);
+      } catch (error) {
+        teardownAll();
+        switchUi("lobby");
+        updateStatus("Error", "error");
+        setError(error.message);
+      } finally {
+        els.createBtn.disabled = false;
+        els.joinBtn.disabled = false;
+      }
+    }
+
+    function resetEndedMessage() {
+      els.endedTitle.textContent = "Call ended";
+      els.endedMessage.textContent = "The session has closed. Return to the lobby to create or join another room.";
+    }
+
+    function endSession(message, isError) {
+      if (state.endingSession) {
+        return;
+      }
+      state.endingSession = true;
+      cleanupMedia();
+      destroyPeer();
+      state.roomCode = "";
+      state.isHost = false;
+      els.roomCodeDisplay.textContent = "------";
+      els.roomCodePanel.classList.add("hidden");
+      clearSidebarState();
+      els.endedTitle.textContent = isError ? "Connection issue" : "Call ended";
+      els.endedMessage.textContent = message;
+      updateStatus(isError ? "Disconnected" : "Ended", "disconnected");
+      switchUi("ended");
+      setError(isError ? message : "");
+      state.explicitlyEnded = false;
+      state.endingSession = false;
+    }
+
+    function returnToLobby() {
+      teardownAll();
+      els.roomCodeDisplay.textContent = "------";
+      els.roomCodeInput.value = "";
+      clearSidebarState();
+      setError("");
+      updateStatus("Lobby", "idle");
+      switchUi("lobby");
+    }
+
+    function toggleAudio() {
+      if (!state.localStream) {
+        return;
+      }
+      state.micEnabled = !state.micEnabled;
+      state.localStream.getAudioTracks().forEach((track) => {
+        track.enabled = state.micEnabled;
+      });
+      syncControlButtons();
+    }
+
+    function toggleVideo() {
+      if (!state.localStream) {
+        return;
+      }
+      state.cameraEnabled = !state.cameraEnabled;
+      state.localStream.getVideoTracks().forEach((track) => {
+        track.enabled = state.cameraEnabled;
+      });
+      syncControlButtons();
+    }
+
+    els.createBtn.addEventListener("click", createRoom);
+    els.joinBtn.addEventListener("click", joinRoom);
+    els.copyBtn.addEventListener("click", () => {
+      if (state.roomCode) {
+        copyToClipboard(state.roomCode, "Room code copied");
+      }
+    });
+    els.saveNetworkBtn.addEventListener("click", saveNetworkSettings);
+    els.clearTurnBtn.addEventListener("click", clearTurnSettings);
+    els.returnLobbyBtn.addEventListener("click", returnToLobby);
+    els.muteBtn.addEventListener("click", toggleAudio);
+    els.cameraBtn.addEventListener("click", toggleVideo);
+    els.endBtn.addEventListener("click", () => {
+      state.explicitlyEnded = true;
+      endSession("You ended the call.", false);
+    });
+    els.roomCodeInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        joinRoom();
+      }
+    });
+    els.roomCodeInput.addEventListener("input", () => {
+      els.roomCodeInput.value = normalizeRoomCode(els.roomCodeInput.value);
+    });
+
+    window.addEventListener("beforeunload", () => {
+      teardownAll();
+    });
+
+    loadNetworkSettings();
+    syncControlButtons();
+    switchUi("lobby");
+    updateStatus("Lobby", "idle");
+  </script>
+</body>
+</html>
